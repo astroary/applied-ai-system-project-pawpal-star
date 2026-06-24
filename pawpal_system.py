@@ -4,13 +4,17 @@ Classes:
     Task      — a single care activity (walk, feeding, meds, ...).
     Pet       — a pet plus the list of tasks it needs.
     Owner     — a person who manages one or more pets.
-    Scheduler — selects and orders tasks into a daily plan under a time budget.
+    Scheduler — selects, orders, filters, and conflict-checks tasks.
 """
 
 from dataclasses import dataclass, field
+from datetime import date, timedelta
 
 # Lower number = higher priority, so tasks sort high -> low.
 PRIORITY_ORDER = {"high": 0, "medium": 1, "low": 2}
+
+# How many days until a recurring task's next occurrence.
+FREQUENCY_DAYS = {"daily": 1, "weekly": 7}
 
 
 @dataclass
@@ -21,7 +25,10 @@ class Task:
     duration_minutes: int
     priority: str = "medium"        # "low" | "medium" | "high"
     frequency: str = "daily"        # "daily" | "weekly" | "once"
+    time: str = ""                  # scheduled clock time, "HH:MM"
     completed: bool = False
+    pet_name: str = ""              # set automatically when added to a Pet
+    due_date: date | None = None
 
     def priority_rank(self) -> int:
         """Return a sortable rank (0 = highest) based on priority."""
@@ -30,6 +37,26 @@ class Task:
     def mark_complete(self) -> None:
         """Mark this task as done."""
         self.completed = True
+
+    def next_occurrence(self) -> "Task | None":
+        """Return a fresh, uncompleted copy for the next due date.
+
+        Returns None for one-off tasks (frequency not daily/weekly).
+        """
+        step = FREQUENCY_DAYS.get(self.frequency)
+        if step is None:
+            return None
+        base = self.due_date or date.today()
+        return Task(
+            title=self.title,
+            duration_minutes=self.duration_minutes,
+            priority=self.priority,
+            frequency=self.frequency,
+            time=self.time,
+            completed=False,
+            pet_name=self.pet_name,
+            due_date=base + timedelta(days=step),
+        )
 
 
 @dataclass
@@ -43,12 +70,21 @@ class Pet:
     tasks: list[Task] = field(default_factory=list)
 
     def add_task(self, task: Task) -> None:
-        """Attach a care task to this pet."""
+        """Attach a care task to this pet (and stamp it with the pet's name)."""
+        task.pet_name = self.name
         self.tasks.append(task)
 
     def task_count(self) -> int:
         """Return how many tasks this pet currently has."""
         return len(self.tasks)
+
+    def complete_task(self, task: Task) -> "Task | None":
+        """Mark a task done; if it recurs, queue and return its next occurrence."""
+        task.mark_complete()
+        nxt = task.next_occurrence()
+        if nxt is not None:
+            self.tasks.append(nxt)
+        return nxt
 
 
 @dataclass
@@ -74,7 +110,7 @@ class Owner:
 
 
 class Scheduler:
-    """Builds a daily plan from tasks given a time budget and priorities."""
+    """Selects, orders, filters, and conflict-checks pet-care tasks."""
 
     def __init__(self, available_minutes: int, start_hour: int = 8):
         self.tasks: list[Task] = []
@@ -90,14 +126,47 @@ class Scheduler:
         for task in owner.all_tasks():
             self.add_task(task)
 
+    # --- Sorting & filtering ---------------------------------------------
+    def sort_by_time(self) -> list[Task]:
+        """Return tasks sorted by scheduled time ("HH:MM"); untimed last."""
+        return sorted(self.tasks, key=lambda t: t.time or "99:99")
+
+    def filter_by_status(self, completed: bool) -> list[Task]:
+        """Return tasks matching the given completion status."""
+        return [t for t in self.tasks if t.completed == completed]
+
+    def filter_by_pet(self, pet_name: str) -> list[Task]:
+        """Return tasks belonging to the named pet."""
+        return [t for t in self.tasks if t.pet_name == pet_name]
+
+    # --- Conflict detection ----------------------------------------------
+    def detect_conflicts(self) -> list[str]:
+        """Return a warning per scheduled time shared by 2+ tasks.
+
+        Lightweight: matches exact "HH:MM" start times only (it does not
+        account for overlapping durations). Returns warnings rather than
+        raising, so the caller can keep running.
+        """
+        by_time: dict[str, list[Task]] = {}
+        for t in self.tasks:
+            if t.time:
+                by_time.setdefault(t.time, []).append(t)
+
+        warnings = []
+        for slot, tasks in sorted(by_time.items()):
+            if len(tasks) > 1:
+                who = ", ".join(f"{t.title} ({t.pet_name})" for t in tasks)
+                warnings.append(f"Conflict at {slot}: {who}")
+        return warnings
+
+    # --- Plan generation -------------------------------------------------
     def generate_plan(self) -> list[dict]:
-        """Select and time-order tasks to fit the available minutes.
+        """Select and time-order pending tasks to fit the available minutes.
 
         Highest-priority tasks are placed first; a task is skipped if it
         would push the plan past the time budget. Returns a list of slots:
         {"time": "HH:MM", "task": Task}.
         """
-        # Only plan tasks that still need doing, hardest-priority first.
         pending = [t for t in self.tasks if not t.completed]
         ordered = sorted(pending, key=lambda t: (t.priority_rank(), t.duration_minutes))
 

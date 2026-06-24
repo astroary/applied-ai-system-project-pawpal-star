@@ -47,15 +47,28 @@ pip install -r requirements.txt
 Terminal output from running `python main.py`:
 
 ```
-Today's Schedule for Jordan
-========================================
-Daily plan (65/90 min used):
-  08:00 — Feeding (10 min) [priority: high]
-  08:10 — Feeding (10 min) [priority: high]
-  08:20 — Morning walk (30 min) [priority: high]
-  08:50 — Litter cleanup (15 min) [priority: medium]
-Skipped (not enough time):
-  - Training session (45 min, low)
+==================================================
+Tasks sorted by time:
+  07:30 — Morning walk (Biscuit) [high]
+  08:00 — Feeding (Biscuit) [high]
+  08:00 — Feeding (Mochi) [high]
+  12:00 — Litter cleanup (Mochi) [medium]
+  18:00 — Evening walk (Biscuit) [medium]
+
+==================================================
+Filtered — Biscuit's tasks only:
+  18:00 — Evening walk (Biscuit) [medium]
+  07:30 — Morning walk (Biscuit) [high]
+  08:00 — Feeding (Biscuit) [high]
+
+==================================================
+Conflict detection:
+  ⚠️  Conflict at 08:00: Feeding (Biscuit), Feeding (Mochi)
+
+==================================================
+Recurring task: completing Biscuit's daily 'Morning walk'...
+  Marked complete: Morning walk (completed=True)
+  Auto-created next occurrence due: 2026-06-24 (completed=False)
 ```
 
 ## 🧪 Testing PawPal+
@@ -84,10 +97,10 @@ tests/test_pawpal.py ..                                                  [100%]
 
 | Feature | Method(s) | Notes |
 |---------|-----------|-------|
-| Task sorting | | e.g., by priority, duration |
-| Filtering | | e.g., skip tasks if time runs out |
-| Conflict handling | | e.g., overlapping time slots |
-| Recurring tasks | | e.g., daily vs. weekly |
+| Task sorting | `Scheduler.sort_by_time()`, `Task.priority_rank()` | Sort by scheduled `"HH:MM"` time; `generate_plan()` orders by priority then duration |
+| Filtering | `Scheduler.filter_by_status()`, `Scheduler.filter_by_pet()` | Filter by completion status or pet name |
+| Conflict handling | `Scheduler.detect_conflicts()` | Flags tasks sharing an exact start time; returns warnings instead of crashing |
+| Recurring tasks | `Pet.complete_task()`, `Task.next_occurrence()` | Completing a daily/weekly task auto-creates the next occurrence via `timedelta` |
 
 ## 📸 Demo Walkthrough
 

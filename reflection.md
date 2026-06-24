@@ -29,13 +29,13 @@ I also added two helper methods that emerged naturally from the relationships: `
 
 **a. Constraints and priorities**
 
-- What constraints does your scheduler consider (for example: time, priority, preferences)?
-- How did you decide which constraints mattered most?
+The scheduler considers two main constraints: the owner's **daily time budget** (`available_minutes`) and each task's **priority**. `generate_plan()` sorts pending tasks by priority first (high → low), then by shortest duration, and greedily fills the day until the time budget runs out — so the most important tasks are guaranteed a slot and low-value tasks are dropped when time is tight. I treated time as the hard limit and priority as the tiebreaker, because a busy owner's real constraint is the minutes they actually have.
 
 **b. Tradeoffs**
 
-- Describe one tradeoff your scheduler makes.
-- Why is that tradeoff reasonable for this scenario?
+My conflict detection only flags tasks that share the **exact same start time** ("HH:MM" match); it does not account for overlapping *durations*. So a 30-minute walk at 08:00 and a feeding at 08:15 are treated as non-conflicting, even though they overlap in real life.
+
+This is a reasonable tradeoff for the scenario: exact-match detection is simple, fast, and easy to reason about, and it catches the most common mistake (double-booking the same slot). Full overlap math would add complexity for a planning aid where the owner can eyeball the schedule and adjust. It's an obvious place to extend later.
 
 ---
 
