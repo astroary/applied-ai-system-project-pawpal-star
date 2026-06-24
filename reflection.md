@@ -15,8 +15,13 @@ Relationships: an Owner owns one or more Pets, each Pet has many Tasks, and the 
 
 **b. Design changes**
 
-- Did your design change during implementation?
-- If yes, describe at least one change and why you made it.
+Yes. The biggest change was to the **Task** class. My initial skeleton had `category` and `recurring` fields but no way to track whether a task was done. While implementing the demo and tests, I realized the scheduler needs to know which tasks are still pending, so I:
+
+- Added a `completed` flag and a `mark_complete()` method to track status.
+- Replaced the `recurring` boolean with a `frequency` field (`"daily"`/`"weekly"`/`"once"`), which is more expressive.
+- Dropped `category`, since it wasn't used by any scheduling logic — keeping it would have been unnecessary complexity.
+
+I also added two helper methods that emerged naturally from the relationships: `Owner.all_tasks()` (flatten every task across the owner's pets) and `Scheduler.load_from_owner()`. These came directly from thinking through "how does the Scheduler get tasks from the Owner's pets?" — it was cleaner to give the Owner that responsibility than to have the Scheduler reach into each pet itself.
 
 ---
 
