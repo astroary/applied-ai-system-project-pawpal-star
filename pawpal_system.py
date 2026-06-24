@@ -7,7 +7,8 @@ Classes:
     Scheduler — selects, orders, filters, and conflict-checks tasks.
 """
 
-from dataclasses import dataclass, field
+import json
+from dataclasses import asdict, dataclass, field
 from datetime import date, timedelta
 
 # Lower number = higher priority, so tasks sort high -> low.
@@ -58,6 +59,20 @@ class Task:
             due_date=base + timedelta(days=step),
         )
 
+    def to_dict(self) -> dict:
+        """Return a JSON-safe dict (dates become ISO strings)."""
+        data = asdict(self)
+        data["due_date"] = self.due_date.isoformat() if self.due_date else None
+        return data
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Task":
+        """Rebuild a Task from its dict form (parsing ISO dates back)."""
+        data = dict(data)
+        if data.get("due_date"):
+            data["due_date"] = date.fromisoformat(data["due_date"])
+        return cls(**data)
+
 
 @dataclass
 class Pet:
@@ -86,6 +101,28 @@ class Pet:
             self.tasks.append(nxt)
         return nxt
 
+    def to_dict(self) -> dict:
+        """Return a JSON-safe dict including this pet's tasks."""
+        return {
+            "name": self.name,
+            "species": self.species,
+            "breed": self.breed,
+            "age": self.age,
+            "tasks": [t.to_dict() for t in self.tasks],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Pet":
+        """Rebuild a Pet (and its tasks) from its dict form."""
+        pet = cls(
+            name=data["name"],
+            species=data["species"],
+            breed=data.get("breed", ""),
+            age=data.get("age", 0),
+        )
+        pet.tasks = [Task.from_dict(t) for t in data.get("tasks", [])]
+        return pet
+
 
 @dataclass
 class Owner:
@@ -107,6 +144,34 @@ class Owner:
     def all_tasks(self) -> list[Task]:
         """Return every task across all of this owner's pets."""
         return [task for pet in self.pets for task in pet.tasks]
+
+    # --- Persistence (Challenge 2) ---------------------------------------
+    def to_dict(self) -> dict:
+        """Return a JSON-safe dict of the whole owner/pets/tasks tree."""
+        return {
+            "name": self.name,
+            "daily_minutes_available": self.daily_minutes_available,
+            "preferences": self.preferences,
+            "pets": [pet.to_dict() for pet in self.pets],
+        }
+
+    def save_to_json(self, path: str = "data.json") -> None:
+        """Write this owner (and all pets/tasks) to a JSON file."""
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(self.to_dict(), f, indent=2)
+
+    @classmethod
+    def load_from_json(cls, path: str = "data.json") -> "Owner":
+        """Load an owner (and all pets/tasks) from a JSON file."""
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        owner = cls(
+            name=data["name"],
+            daily_minutes_available=data.get("daily_minutes_available", 120),
+            preferences=data.get("preferences", {}),
+        )
+        owner.pets = [Pet.from_dict(p) for p in data.get("pets", [])]
+        return owner
 
 
 class Scheduler:
@@ -138,6 +203,46 @@ class Scheduler:
     def filter_by_pet(self, pet_name: str) -> list[Task]:
         """Return tasks belonging to the named pet."""
         return [t for t in self.tasks if t.pet_name == pet_name]
+
+    def sort_by_priority_then_time(self) -> list[Task]:
+        """Return tasks ordered by priority (high first), then by time.
+
+        Challenge 3: unlike sort_by_time(), the most important tasks lead
+        the list even if they occur later in the day.
+        """
+        return sorted(self.tasks, key=lambda t: (t.priority_rank(), t.time or "99:99"))
+
+    # --- Next available slot (Challenge 1) -------------------------------
+    @staticmethod
+    def _to_minutes(hhmm: str) -> int:
+        """Convert "HH:MM" to minutes since midnight."""
+        hours, minutes = hhmm.split(":")
+        return int(hours) * 60 + int(minutes)
+
+    @staticmethod
+    def _to_hhmm(minutes: int) -> str:
+        """Convert minutes since midnight to "HH:MM"."""
+        return f"{minutes // 60:02d}:{minutes % 60:02d}"
+
+    def next_available_slot(self, duration_minutes: int) -> "str | None":
+        """Return the earliest start time that fits a task of this length.
+
+        Scans from start_hour, stepping over already-timed tasks, and returns
+        the first gap big enough (as "HH:MM"), or None if the day is full.
+        """
+        busy = sorted(
+            (self._to_minutes(t.time), self._to_minutes(t.time) + t.duration_minutes)
+            for t in self.tasks
+            if t.time
+        )
+        cursor = self.start_hour * 60
+        for start, end in busy:
+            if cursor + duration_minutes <= start:
+                return self._to_hhmm(cursor)
+            cursor = max(cursor, end)
+        if cursor + duration_minutes <= 24 * 60:
+            return self._to_hhmm(cursor)
+        return None
 
     # --- Conflict detection ----------------------------------------------
     def detect_conflicts(self) -> list[str]:

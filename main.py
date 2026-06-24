@@ -1,17 +1,43 @@
-"""Temporary CLI demo for PawPal+ — verifies the logic layer in the terminal.
+"""CLI demo for PawPal+ — verifies the logic layer (and extensions) in the terminal.
 
 Run with:  python main.py
 """
 
+import sys
+
+from tabulate import tabulate
+
 from pawpal_system import Owner, Pet, Task, Scheduler
 
+# Challenge 4: color-coded, emoji status indicators for terminal output.
+# Color is only emitted to an interactive terminal so piped output stays clean.
+PRIORITY_EMOJI = {"high": "🔴", "medium": "🟡", "low": "🟢"}
+ANSI = {"high": "\033[91m", "medium": "\033[93m", "low": "\033[92m", "reset": "\033[0m"}
+USE_COLOR = sys.stdout.isatty()
 
-def show(label, tasks):
-    """Print a labeled list of tasks as 'time — title (pet) [priority]'."""
-    print(label)
+
+def task_table(tasks) -> str:
+    """Render tasks as a tabulated, color-coded table (Challenge 4)."""
+    rows = []
     for t in tasks:
-        stamp = t.time or "--:--"
-        print(f"  {stamp} — {t.title} ({t.pet_name}) [{t.priority}]")
+        color = ANSI[t.priority] if USE_COLOR else ""
+        reset = ANSI["reset"] if USE_COLOR else ""
+        rows.append(
+            [
+                t.time or "—",
+                t.pet_name,
+                t.title,
+                f"{t.duration_minutes}m",
+                f"{color}{PRIORITY_EMOJI[t.priority]} {t.priority}{reset}",
+                "✅" if t.completed else "⬜",
+            ]
+        )
+    headers = ["Time", "Pet", "Task", "Dur", "Priority", "Done"]
+    return tabulate(rows, headers=headers, tablefmt="rounded_outline")
+
+
+def banner(text: str) -> None:
+    print("\n" + "=" * 60 + f"\n{text}\n" + "=" * 60)
 
 
 def main() -> None:
@@ -22,40 +48,42 @@ def main() -> None:
     owner.add_pet(biscuit)
     owner.add_pet(mochi)
 
-    # Add tasks intentionally OUT OF ORDER to prove sorting works.
-    biscuit.add_task(Task("Evening walk", duration_minutes=30, priority="medium", time="18:00"))
-    biscuit.add_task(Task("Morning walk", duration_minutes=30, priority="high", time="07:30"))
-    biscuit.add_task(Task("Feeding", duration_minutes=10, priority="high", time="08:00"))
-    mochi.add_task(Task("Feeding", duration_minutes=10, priority="high", time="08:00"))  # conflict!
-    mochi.add_task(Task("Litter cleanup", duration_minutes=15, priority="medium", time="12:00"))
+    # Added out of order, on purpose, to show sorting works.
+    biscuit.add_task(Task("Evening walk", 30, priority="medium", time="18:00"))
+    biscuit.add_task(Task("Morning walk", 30, priority="high", time="07:30"))
+    biscuit.add_task(Task("Feeding", 10, priority="high", time="08:00"))
+    mochi.add_task(Task("Feeding", 10, priority="high", time="08:00"))  # conflict!
+    mochi.add_task(Task("Litter cleanup", 15, priority="medium", time="09:00"))
+    mochi.add_task(Task("Medication", 10, priority="high", time="16:00"))  # late but high
 
     scheduler = Scheduler(available_minutes=owner.daily_minutes_available)
     scheduler.load_from_owner(owner)
 
-    print("=" * 50)
-    show("Tasks sorted by time:", scheduler.sort_by_time())
+    # Challenge 4: professional table output.
+    banner("All tasks (sorted by time)")
+    print(task_table(scheduler.sort_by_time()))
 
-    print("\n" + "=" * 50)
-    show("Filtered — Biscuit's tasks only:", scheduler.filter_by_pet("Biscuit"))
+    # Challenge 3: priority-first ordering.
+    banner("Sorted by PRIORITY, then time (Challenge 3)")
+    print(task_table(scheduler.sort_by_priority_then_time()))
 
-    print("\n" + "=" * 50)
-    show("Filtered — pending (not completed) tasks:", scheduler.filter_by_status(completed=False))
-
-    print("\n" + "=" * 50)
-    print("Conflict detection:")
+    # Conflict detection.
+    banner("Conflict detection")
     conflicts = scheduler.detect_conflicts()
-    if conflicts:
-        for w in conflicts:
-            print(f"  ⚠️  {w}")
-    else:
-        print("  No conflicts.")
+    print("\n".join(f"  ⚠️  {w}" for w in conflicts) if conflicts else "  No conflicts.")
 
-    print("\n" + "=" * 50)
-    print("Recurring task: completing Biscuit's daily 'Morning walk'...")
-    morning = biscuit.tasks[1]  # the 07:30 morning walk
-    nxt = biscuit.complete_task(morning)
-    print(f"  Marked complete: {morning.title} (completed={morning.completed})")
-    print(f"  Auto-created next occurrence due: {nxt.due_date} (completed={nxt.completed})")
+    # Challenge 1: next available slot.
+    banner("Next available slot (Challenge 1)")
+    for minutes in (20, 45, 90):
+        slot = scheduler.next_available_slot(minutes)
+        print(f"  Earliest free {minutes}-min slot: {slot or 'no room left today'}")
+
+    # Challenge 2: persistence round-trip.
+    banner("Persistence: save -> load (Challenge 2)")
+    owner.save_to_json("data.json")
+    reloaded = Owner.load_from_json("data.json")
+    print(f"  Saved to data.json, reloaded owner '{reloaded.name}' "
+          f"with {len(reloaded.pets)} pets and {len(reloaded.all_tasks())} tasks.")
 
 
 if __name__ == "__main__":

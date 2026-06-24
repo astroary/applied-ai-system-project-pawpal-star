@@ -131,3 +131,48 @@ def test_empty_owner_produces_empty_plan_and_no_conflicts():
     assert scheduler.generate_plan() == []
     assert scheduler.detect_conflicts() == []
     assert scheduler.explain_plan() == "No tasks fit in the available time."
+
+
+# --- Extensions -----------------------------------------------------------
+def test_sort_by_priority_then_time():
+    """Challenge 3: high-priority tasks lead even if they occur later."""
+    scheduler = Scheduler(available_minutes=120)
+    scheduler.add_task(Task("Early low", 10, priority="low", time="07:00"))
+    scheduler.add_task(Task("Late high", 10, priority="high", time="09:00"))
+    titles = [t.title for t in scheduler.sort_by_priority_then_time()]
+    assert titles == ["Late high", "Early low"]
+
+
+def test_next_available_slot_finds_gap_after_busy_time():
+    """Challenge 1: the next slot starts when the existing task ends."""
+    scheduler = Scheduler(available_minutes=240, start_hour=8)
+    scheduler.add_task(Task("Walk", 30, time="08:00"))  # busy 08:00-08:30
+    assert scheduler.next_available_slot(20) == "08:30"
+
+
+def test_next_available_slot_returns_none_when_day_is_full():
+    """Challenge 1: returns None if nothing fits before midnight."""
+    scheduler = Scheduler(available_minutes=60, start_hour=23)
+    scheduler.add_task(Task("Late task", 30, time="23:00"))  # busy 23:00-23:30
+    assert scheduler.next_available_slot(60) is None
+
+
+def test_owner_json_round_trip(tmp_path):
+    """Challenge 2: saving then loading reproduces pets, tasks, and dates."""
+    owner = Owner(name="Jordan", daily_minutes_available=90)
+    pet = Pet(name="Biscuit", species="dog")
+    pet.add_task(Task("Walk", 30, priority="high", time="08:00",
+                      frequency="daily", due_date=date.today()))
+    owner.add_pet(pet)
+
+    path = tmp_path / "data.json"
+    owner.save_to_json(str(path))
+    loaded = Owner.load_from_json(str(path))
+
+    assert loaded.name == "Jordan"
+    assert loaded.daily_minutes_available == 90
+    assert len(loaded.pets) == 1
+    reloaded_task = loaded.pets[0].tasks[0]
+    assert reloaded_task.title == "Walk"
+    assert reloaded_task.due_date == date.today()
+    assert reloaded_task.pet_name == "Biscuit"

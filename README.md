@@ -134,27 +134,70 @@ Launch the app with `streamlit run app.py`, then:
    - shows **conflict warnings** (`st.warning`) if two tasks share a start time, or a success message if none,
    - prints a **priority-ordered daily plan** that fits your time budget and lists any tasks skipped for lack of time.
 
-Key `Scheduler` behaviors you'll see in action: **time sorting**, **conflict warnings**, **priority-based planning within a time budget**, and (in the CLI demo) **daily recurrence**.
+Key `Scheduler` behaviors you'll see in action: **time sorting**, **conflict warnings**, and **priority-based planning within a time budget**.
 
 ### Sample CLI output (`python main.py`)
 
-```
-==================================================
-Tasks sorted by time:
-  07:30 — Morning walk (Biscuit) [high]
-  08:00 — Feeding (Biscuit) [high]
-  08:00 — Feeding (Mochi) [high]
-  12:00 — Litter cleanup (Mochi) [medium]
-  18:00 — Evening walk (Biscuit) [medium]
+The CLI demo prints color-coded, tabulated tables (color shown only in an interactive terminal):
 
-==================================================
-Conflict detection:
+```
+============================================================
+All tasks (sorted by time)
+============================================================
+╭────────┬─────────┬────────────────┬───────┬────────────┬────────╮
+│ Time   │ Pet     │ Task           │ Dur   │ Priority   │ Done   │
+├────────┼─────────┼────────────────┼───────┼────────────┼────────┤
+│ 07:30  │ Biscuit │ Morning walk   │ 30m   │ 🔴 high    │ ⬜     │
+│ 08:00  │ Biscuit │ Feeding        │ 10m   │ 🔴 high    │ ⬜     │
+│ 08:00  │ Mochi   │ Feeding        │ 10m   │ 🔴 high    │ ⬜     │
+│ 09:00  │ Mochi   │ Litter cleanup │ 15m   │ 🟡 medium  │ ⬜     │
+│ 16:00  │ Mochi   │ Medication     │ 10m   │ 🔴 high    │ ⬜     │
+│ 18:00  │ Biscuit │ Evening walk   │ 30m   │ 🟡 medium  │ ⬜     │
+╰────────┴─────────┴────────────────┴───────┴────────────┴────────╯
+
+============================================================
+Conflict detection
+============================================================
   ⚠️  Conflict at 08:00: Feeding (Biscuit), Feeding (Mochi)
 
-==================================================
-Recurring task: completing Biscuit's daily 'Morning walk'...
-  Marked complete: Morning walk (completed=True)
-  Auto-created next occurrence due: 2026-06-24 (completed=False)
+============================================================
+Next available slot (Challenge 1)
+============================================================
+  Earliest free 20-min slot: 08:10
+  Earliest free 45-min slot: 08:10
+  Earliest free 90-min slot: 09:15
 ```
 
 **Screenshot or video** *(optional)*: <!-- Insert a screenshot or link to a demo video here -->
+
+## 🧩 Optional Extensions
+
+These build on the core project. All are exercised by `python main.py` and covered by the test suite.
+
+### Challenge 1 — Next available slot
+`Scheduler.next_available_slot(duration_minutes)` scans the day from `start_hour`, steps over already-timed tasks, and returns the earliest `"HH:MM"` gap big enough for a task of the given length (or `None` if the day is full). In the demo, a 20- or 45-minute task fits at `08:10`, but a 90-minute task is pushed to `09:15` because it can't fit the morning gap:
+
+```
+  Earliest free 20-min slot: 08:10
+  Earliest free 45-min slot: 08:10
+  Earliest free 90-min slot: 09:15
+```
+
+### Challenge 2 — Data persistence
+`Owner.save_to_json(path)` and `Owner.load_from_json(path)` serialize the entire owner → pets → tasks tree to `data.json` and rebuild it on load. Serialization is handled by `to_dict()` / `from_dict()` on each class; `date` fields are stored as ISO strings and parsed back on load. **Workflow:** the demo saves state to `data.json` after building the schedule, then reloads it to prove the round-trip. `data.json` is git-ignored since it's regenerated at runtime. *(Files modified: `pawpal_system.py`, `main.py`, `.gitignore`.)*
+
+### Challenge 3 — Advanced priority scheduling
+`Scheduler.sort_by_priority_then_time()` sorts by priority first (high → low), then by time — so an important task scheduled later still leads the list. Note how the `16:00` Medication (high) jumps above the `09:00` Litter cleanup (medium):
+
+```
+By priority, then time:
+  07:30  Morning walk    🔴 high
+  08:00  Feeding         🔴 high
+  08:00  Feeding         🔴 high
+  16:00  Medication      🔴 high     <- late, but high priority
+  09:00  Litter cleanup  🟡 medium
+  18:00  Evening walk    🟡 medium
+```
+
+### Challenge 4 — Professional output formatting
+The CLI uses the [`tabulate`](https://pypi.org/project/tabulate/) library (`rounded_outline` format) for bordered tables, plus emoji priority indicators (🔴/🟡/🟢) and status markers (✅/⬜). ANSI color is applied only when writing to an interactive terminal (`sys.stdout.isatty()`), so piped/redirected output stays clean. *(Library used: `tabulate`; see `task_table()` in `main.py`.)*
