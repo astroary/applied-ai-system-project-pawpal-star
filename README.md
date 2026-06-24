@@ -73,23 +73,35 @@ Recurring task: completing Biscuit's daily 'Morning walk'...
 
 ## 🧪 Testing PawPal+
 
+Run the full test suite from the project root:
+
 ```bash
-# Run the full test suite:
-pytest
+python -m pytest
 
 # Run with coverage:
 pytest --cov
 ```
 
+**What the tests cover** (`tests/test_pawpal.py`, 12 tests):
+
+- **Task basics** — `mark_complete()` flips status; adding a task grows the pet's count and stamps the pet's name.
+- **Sorting correctness** — out-of-order tasks return in chronological `"HH:MM"` order; untimed tasks sort last.
+- **Filtering** — `filter_by_status()` and `filter_by_pet()` return only matching tasks.
+- **Recurrence logic** — completing a daily task queues one due tomorrow; weekly advances 7 days; a `"once"` task creates no follow-up.
+- **Conflict detection** — two tasks at the same time produce exactly one warning; distinct times produce none.
+- **Edge case** — an owner whose pet has no tasks yields an empty plan and no conflicts (no crash).
+
 Sample test output:
 
 ```
-collected 2 items
+collected 12 items
 
-tests/test_pawpal.py ..                                                  [100%]
+tests/test_pawpal.py ............                                         [100%]
 
-============================== 2 passed in 0.01s ===============================
+============================== 12 passed in 0.02s ==============================
 ```
+
+**Confidence level: ★★★★☆ (4/5)** — All core behaviors and the main edge cases pass. Docked one star because conflict detection only checks exact start times (not overlapping durations), and recurrence isn't yet tested across month/year boundaries.
 
 ## 📐 Smarter Scheduling
 
