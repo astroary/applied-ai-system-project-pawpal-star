@@ -4,8 +4,14 @@
 
 **a. Initial design**
 
-- Briefly describe your initial UML design.
-- What classes did you include, and what responsibilities did you assign to each?
+My initial UML uses four classes:
+
+- **Owner** — holds the user's name, daily time budget (`daily_minutes_available`), and `preferences`. Responsible for owning pets and storing scheduling preferences.
+- **Pet** — holds basic info (name, species, breed, age) and the list of care tasks for that pet.
+- **Task** — a single care item with a title, `duration_minutes`, `priority`, `category`, and a `recurring` flag. Responsible for reporting its own priority rank for sorting.
+- **Scheduler** — the "brain." Takes a pool of tasks plus the available-minutes constraint and is responsible for building (`generate_plan`) and explaining (`explain_plan`) the daily plan.
+
+Relationships: an Owner owns one or more Pets, each Pet has many Tasks, and the Scheduler schedules from a set of Tasks. I kept data (Owner/Pet/Task) separate from logic (Scheduler) so the scheduling rules live in one place.
 
 **b. Design changes**
 
