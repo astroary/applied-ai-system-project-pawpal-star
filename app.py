@@ -1,3 +1,5 @@
+from datetime import time
+
 import streamlit as st
 
 # Step 1: bring the logic layer into the UI.
@@ -8,9 +10,7 @@ st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
 st.title("🐾 PawPal+")
 st.caption("Plan your pets' care around the time you actually have.")
 
-# Step 2: persist the Owner in session_state so data survives reruns.
-# Streamlit re-runs this whole script on every interaction; without this,
-# the Owner (and all its pets/tasks) would be recreated empty each time.
+# Persist the Owner in session_state so data survives Streamlit reruns.
 if "owner" not in st.session_state:
     st.session_state.owner = Owner(name="Jordan", daily_minutes_available=90)
 
@@ -57,27 +57,46 @@ if owner.pets:
         pet_names = [p.name for p in owner.pets]
         target = st.selectbox("For which pet?", pet_names)
         t_title = st.text_input("Task title", value="Morning walk")
-        c1, c2 = st.columns(2)
+        c1, c2, c3 = st.columns(3)
         with c1:
             t_duration = st.number_input("Duration (min)", min_value=1, max_value=240, value=20)
         with c2:
             t_priority = st.selectbox("Priority", ["high", "medium", "low"])
+        with c3:
+            t_time = st.time_input("Scheduled time", value=time(8, 0))
+        t_frequency = st.selectbox("Frequency", ["daily", "weekly", "once"])
         submitted_task = st.form_submit_button("Add task")
         if submitted_task:
             pet = owner.pets[pet_names.index(target)]
-            pet.add_task(Task(t_title, duration_minutes=int(t_duration), priority=t_priority))
-            st.success(f"Added '{t_title}' to {target}.")
-
-    # Show each pet's current tasks.
-    for pet in owner.pets:
-        if pet.tasks:
-            st.markdown(f"**{pet.name}** ({pet.task_count()} task(s))")
-            st.table(
-                [
-                    {"title": t.title, "duration_minutes": t.duration_minutes, "priority": t.priority}
-                    for t in pet.tasks
-                ]
+            pet.add_task(
+                Task(
+                    t_title,
+                    duration_minutes=int(t_duration),
+                    priority=t_priority,
+                    frequency=t_frequency,
+                    time=t_time.strftime("%H:%M"),
+                )
             )
+            st.success(f"Added '{t_title}' to {target} at {t_time.strftime('%H:%M')}.")
+
+    # Show all tasks across pets, sorted by scheduled time (Step 1 sorting).
+    if owner.all_tasks():
+        scheduler = Scheduler(available_minutes=owner.daily_minutes_available)
+        scheduler.load_from_owner(owner)
+        st.markdown("**All tasks (sorted by time):**")
+        st.table(
+            [
+                {
+                    "time": t.time or "—",
+                    "pet": t.pet_name,
+                    "task": t.title,
+                    "min": t.duration_minutes,
+                    "priority": t.priority,
+                    "done": "✅" if t.completed else "",
+                }
+                for t in scheduler.sort_by_time()
+            ]
+        )
 else:
     st.caption("Add a pet first, then you can add tasks for it.")
 
@@ -91,4 +110,13 @@ if st.button("Generate schedule", type="primary"):
     else:
         scheduler = Scheduler(available_minutes=owner.daily_minutes_available)
         scheduler.load_from_owner(owner)
+
+        # Surface conflict warnings prominently so the owner can fix them.
+        conflicts = scheduler.detect_conflicts()
+        if conflicts:
+            for w in conflicts:
+                st.warning(f"⚠️ {w}")
+        else:
+            st.success("No scheduling conflicts found.")
+
         st.code(scheduler.explain_plan(), language=None)

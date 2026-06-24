@@ -22,6 +22,15 @@ Your final app should:
 - Display the plan clearly (and ideally explain the reasoning)
 - Include tests for the most important scheduling behaviors
 
+## ✨ Features
+
+- **Multi-pet management** — one owner can track multiple pets, each with its own task list (`Owner`, `Pet`).
+- **Priority-aware daily plan** — `Scheduler.generate_plan()` fits the highest-priority tasks into the owner's time budget and explains its choices.
+- **Sorting by time** — `Scheduler.sort_by_time()` returns tasks in chronological order regardless of entry order.
+- **Filtering** — by completion status or pet (`filter_by_status()`, `filter_by_pet()`).
+- **Conflict warnings** — `detect_conflicts()` flags tasks sharing a start time and returns a warning instead of crashing.
+- **Daily / weekly recurrence** — completing a recurring task auto-creates its next occurrence (`Task.next_occurrence()`).
+
 ## Getting started
 
 ### Setup
@@ -114,14 +123,38 @@ tests/test_pawpal.py ............                                         [100%]
 | Conflict handling | `Scheduler.detect_conflicts()` | Flags tasks sharing an exact start time; returns warnings instead of crashing |
 | Recurring tasks | `Pet.complete_task()`, `Task.next_occurrence()` | Completing a daily/weekly task auto-creates the next occurrence via `timedelta` |
 
-## 📸 Demo Walkthrough
+## 🎬 Demo Walkthrough
 
-Describe your app in numbered steps so a reader can follow along without watching a video:
+Launch the app with `streamlit run app.py`, then:
 
-1. <!-- Describe this step -->
-2. <!-- Describe this step -->
-3. <!-- Describe this step -->
-4. <!-- Describe this step -->
-5. <!-- Add more steps as needed -->
+1. **Set up the owner** — enter your name and how many minutes you have for pet care today (the daily time budget the scheduler plans within).
+2. **Add pets** — submit the "Add pet" form for each pet (e.g., Biscuit the dog, Mochi the cat). Each pet keeps its own task list.
+3. **Add tasks** — for each pet, add care tasks with a duration, priority, scheduled time, and frequency (daily/weekly/once). The "All tasks" table updates and shows everything **sorted by time**, even when entered out of order.
+4. **Generate the schedule** — click **Generate schedule**. The app:
+   - shows **conflict warnings** (`st.warning`) if two tasks share a start time, or a success message if none,
+   - prints a **priority-ordered daily plan** that fits your time budget and lists any tasks skipped for lack of time.
+
+Key `Scheduler` behaviors you'll see in action: **time sorting**, **conflict warnings**, **priority-based planning within a time budget**, and (in the CLI demo) **daily recurrence**.
+
+### Sample CLI output (`python main.py`)
+
+```
+==================================================
+Tasks sorted by time:
+  07:30 — Morning walk (Biscuit) [high]
+  08:00 — Feeding (Biscuit) [high]
+  08:00 — Feeding (Mochi) [high]
+  12:00 — Litter cleanup (Mochi) [medium]
+  18:00 — Evening walk (Biscuit) [medium]
+
+==================================================
+Conflict detection:
+  ⚠️  Conflict at 08:00: Feeding (Biscuit), Feeding (Mochi)
+
+==================================================
+Recurring task: completing Biscuit's daily 'Morning walk'...
+  Marked complete: Morning walk (completed=True)
+  Auto-created next occurrence due: 2026-06-24 (completed=False)
+```
 
 **Screenshot or video** *(optional)*: <!-- Insert a screenshot or link to a demo video here -->

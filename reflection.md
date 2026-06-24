@@ -43,13 +43,20 @@ This is a reasonable tradeoff for the scenario: exact-match detection is simple,
 
 **a. How you used AI**
 
-- How did you use AI tools during this project (for example: design brainstorming, debugging, refactoring)?
-- What kinds of prompts or questions were most helpful?
+I used my AI coding assistant at every phase, but for different jobs:
+
+- **Design brainstorming (Phase 1):** turning the four classes into a Mermaid UML diagram and a matching skeleton.
+- **Implementation (Phases 2–4):** fleshing out method bodies, then adding the algorithmic features — sorting by time, filtering, recurrence with `timedelta`, and conflict detection.
+- **Multi-file edits:** when a change touched both `Task` and `Pet` (e.g., adding recurrence), the assistant updated them together and kept `main.py` in sync.
+- **Testing (Phase 5):** drafting pytest cases for the trickier behaviors and explaining what each one asserted.
+
+The most helpful prompts were **specific and grounded in my actual code** — e.g., "based on my skeletons, how should the Scheduler get tasks from the Owner's pets?" — rather than vague "write me a scheduler" requests. Asking it to *explain* its choice was as useful as the code itself.
 
 **b. Judgment and verification**
 
-- Describe one moment where you did not accept an AI suggestion as-is.
-- How did you evaluate or verify what the AI suggested?
+I did not accept the design as-is. The initial `Task` skeleton had `category` and `recurring` fields, but as I implemented the features I realized `category` was never used by any logic and `recurring` (a bool) couldn't express "daily vs. weekly." I dropped `category` to avoid dead complexity and replaced `recurring` with a `frequency` string. I also kept conflict detection deliberately simple (exact time match) rather than accepting a more elaborate overlap algorithm, because the simpler version was easier to verify and fit the scenario.
+
+I verified suggestions by **running them**: the `main.py` CLI demo let me eyeball that sorting, conflicts, and recurrence behaved correctly, and the pytest suite (12 tests) locked in those behaviors so later changes couldn't silently break them.
 
 ---
 
@@ -57,13 +64,20 @@ This is a reasonable tradeoff for the scenario: exact-match detection is simple,
 
 **a. What you tested**
 
-- What behaviors did you test?
-- Why were these tests important?
+I tested the behaviors most likely to be wrong or to regress:
+
+- **Task basics** — `mark_complete()` changes status; adding a task increases a pet's count and stamps the pet's name.
+- **Sorting correctness** — out-of-order tasks return chronologically; untimed tasks sort last.
+- **Filtering** — by completion status and by pet.
+- **Recurrence logic** — a daily task creates one due tomorrow, weekly advances 7 days, and a `"once"` task creates nothing.
+- **Conflict detection** — two tasks at the same time produce exactly one warning; distinct times produce none.
+- **Edge case** — a pet with no tasks yields an empty plan and no conflicts (no crash).
+
+These matter because they are the core "intelligence" of the app — if sorting, recurrence, or conflict detection is wrong, the daily plan misleads the owner.
 
 **b. Confidence**
 
-- How confident are you that your scheduler works correctly?
-- What edge cases would you test next if you had more time?
+I'm fairly confident (★★★★☆). All core behaviors and the main edge cases pass. With more time I'd test: recurrence across **month/year boundaries**, conflict detection for **overlapping durations** (not just identical start times), and behavior when the **time budget is smaller than the highest-priority task**.
 
 ---
 
@@ -71,12 +85,12 @@ This is a reasonable tradeoff for the scenario: exact-match detection is simple,
 
 **a. What went well**
 
-- What part of this project are you most satisfied with?
+I'm most satisfied with the **clean separation between data and logic**. Keeping `Owner`/`Pet`/`Task` as simple dataclasses and putting all the decision-making in `Scheduler` made each feature (sorting, filtering, conflicts, recurrence) easy to add and easy to test in isolation.
 
 **b. What you would improve**
 
-- If you had another iteration, what would you improve or redesign?
+I'd make conflict detection **duration-aware** so overlapping tasks are caught, not just identical start times. I'd also unify the two notions of "time" in the system: tasks now have an explicit scheduled `time`, but `generate_plan()` still assigns its own sequential slots by priority — reconciling those would make the UI and the plan tell a single consistent story.
 
 **c. Key takeaway**
 
-- What is one important thing you learned about designing systems or working with AI on this project?
+The biggest lesson was that my job was to be the **lead architect, not the typist**. The AI could generate plausible code instantly, but it was my responsibility to decide what the system *should* be — to reject unused fields, choose the simpler conflict-detection tradeoff, and verify everything with a demo and tests. AI accelerated the work; judgment and verification kept it correct.
