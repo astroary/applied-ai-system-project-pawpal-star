@@ -49,6 +49,6 @@ flowchart TD
     CRIT -. reasoning steps .-> TRACE
 
     %% Testing checks the AI's behavior (the human/testing checkpoint)
-    EVAL -. runs scenarios, scores pass/fail .-> PROCESS
-    TESTS -. verify guardrails, grounding, critique .-> PROCESS
+    EVAL -. runs scenarios, scores pass/fail .-> LLM
+    TESTS -. verify guardrails, grounding, critique .-> G1
     O -. human reviews confidence + citations .-> UI

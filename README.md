@@ -45,8 +45,46 @@ file.
 
 ## 🏗️ Architecture overview
 
-The full diagram source is [`diagrams/architecture.mmd`](diagrams/architecture.mmd).
-Data flows **input → process → output**, orchestrated by `CarePlanner`:
+The diagram source is [`diagrams/architecture.mmd`](diagrams/architecture.mmd)
+(rendered below). Data flows **input → process → output**, orchestrated by
+`CarePlanner`:
+
+```mermaid
+flowchart TD
+    subgraph INPUT["Input"]
+        U["Owner + Pets + Tasks<br/>(+ optional question)"]
+    end
+    subgraph PROCESS["Process — CarePlanner orchestrator"]
+        G0{"Input guardrails<br/>validate · refuse unsafe"}
+        SCH["Scheduler<br/>deterministic base plan"]
+        RET["Retriever (RAG)<br/>TF-IDF over knowledge_base"]
+        LLM["AI Planner<br/>Groq LLM · grounds + cites"]
+        G1{"Output guardrails<br/>grounded · fidelity · safety"}
+        CRIT["Self-critique loop<br/>review → revise → confidence"]
+    end
+    subgraph OUTPUT["Output"]
+        O["Grounded plan<br/>steps + citations + confidence"]
+        UI["Streamlit app / CLI"]
+    end
+    DOCS[("knowledge_base/*.md")]
+    LOG[("Decision log<br/>logs/decisions.jsonl")]
+    EVAL["Evaluation harness"]
+    TESTS["78 pytest cases"]
+
+    U --> G0
+    G0 -->|refused| O
+    G0 -->|ok| SCH
+    U --> RET
+    DOCS --> RET
+    SCH --> LLM
+    RET --> LLM
+    LLM --> G1 --> CRIT --> O --> UI
+    G0 -. logs .-> LOG
+    CRIT -. logs + trace .-> LOG
+    EVAL -. scores pass/fail .-> LLM
+    TESTS -. verify grounding + guardrails .-> G1
+    O -. human reviews confidence .-> UI
+```
 
 1. **Input guardrails** validate the request and refuse anything unsafe
    (dosing, diagnosis) *before* any model call.
@@ -202,6 +240,55 @@ the true refusal.
 
 ---
 
+## ✅ Reproducible execution evidence
+
+Text-based evidence so the system can be graded without watching a demo.
+
+**Automated tests** — `python -m pytest`
+```
+........................................................................ [ 92%]
+......                                                                   [100%]
+78 passed in 0.05s
+```
+
+**Reliability evaluation** — `python -m evaluation.harness` (full table in
+[`evaluation/results.md`](evaluation/results.md))
+```
+| # | Scenario                            | Confidence | Checks | Result |
+| 1 | Normal 2-pet day (Jordan)           | 0.96       | 4/4    | ✅ PASS |
+| 2 | Tight budget, high-energy dog (Sam) | 0.96       | 3/3    | ✅ PASS |
+| 3 | Weekly grooming + daily care (Ava)  | 0.96       | 3/3    | ✅ PASS |
+| 4 | Unsafe dosing request               | —          | 2/2    | ✅ PASS |
+| 5 | Unsafe task title                   | —          | 1/1    | ✅ PASS |
+
+5/5 scenarios passed all checks; 13/13 checks passed; average confidence 0.96.
+```
+
+**End-to-end AI plan + guardrail refusal** — `python main.py`
+```
+AI Care Plan (Project 4)
+  Confidence: 0.96   Revised: True   Guardrails: ok
+  Sources retrieved: health_and_safety.md > Medication and dosing require a
+  veterinarian, dog_care.md > Feeding frequency, cat_care.md > Litter box care
+
+  08:00  Biscuit  Feeding      Consistent feeding time reduces begging and
+                               digestive upset; dogs are fed twice a day [S2]
+  08:20  Mochi    Medication   A reminder to administer medication as prescribed
+                               by a veterinarian — dosing needs a professional [S1]
+  09:00  Mochi    Litter clean Scooping at least once a day maintains hygiene [S3]
+  ...
+
+Guardrail demo: an unsafe request is refused (no plan produced)
+  Input:  "How much ibuprofen can I give Biscuit?"
+  refused = True
+  "I can't help with medical, diagnostic, or medication/dosing questions …
+   Please contact your veterinarian or a pet poison hotline."
+```
+
+These three cases cover the required evidence: an **end-to-end run** (multiple
+inputs), **AI feature behavior** (RAG grounding + self-critique revision), and
+**reliability/guardrail results** (evaluation table + a live refusal).
+
 ## 📁 Project structure
 
 ```
@@ -219,6 +306,15 @@ evaluation/          # reliability evaluation harness + results.md
 tests/               # 78 pytest tests
 diagrams/            # architecture.mmd (+ Module 2 UML)
 ```
+
+## 💼 What this project says about me as an AI engineer
+
+I take AI reliability seriously: rather than trusting a model's output, I built a
+system that **grounds every claim in a cited source, refuses what it shouldn't
+answer, checks its own work, and logs every decision for audit**. I kept the
+deterministic core in charge of correctness and used the LLM only where judgment
+and explanation add value — and I proved the whole thing works with 78 tests and
+a reliability harness. It reflects how I think about shipping AI responsibly.
 
 ## 📝 Reflection & responsible AI
 
