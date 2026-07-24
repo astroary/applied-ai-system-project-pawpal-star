@@ -86,6 +86,7 @@ class CritiqueResult:
     problems_after: list[str] = field(default_factory=list)
     revised: bool = False
     model_self_confidence: float = 0.0
+    sources: list[str] = field(default_factory=list)  # citations of retrieved chunks
     trace: list[dict] = field(default_factory=list)
 
     @classmethod
@@ -107,6 +108,7 @@ class CritiqueResult:
             "problems_after": self.problems_after,
             "revised": self.revised,
             "model_self_confidence": self.model_self_confidence,
+            "sources": self.sources,
             "plan": self.plan.to_dict(),
         }
 
@@ -244,5 +246,6 @@ def self_critique(llm, plan: AIPlan, chunks: list, scheduler_plan: list[dict],
         problems_after=final.issues,
         revised=(current is not plan),
         model_self_confidence=model_conf,
+        sources=[c.citation() for c in chunks],
         trace=trace,
     )
