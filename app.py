@@ -1,9 +1,22 @@
+import os
 from datetime import time
 
 import streamlit as st
 
 # Step 1: bring the logic layer into the UI.
 from pawpal_system import Owner, Pet, Task, Scheduler
+# Project 4: the AI layer (retrieval + planner + guardrails + critique + logging).
+from care_planner import CarePlanner
+
+
+@st.cache_resource
+def get_care_planner() -> CarePlanner:
+    """Build the AI Care Planner once and reuse it across Streamlit reruns.
+
+    Loading the knowledge base and the LLM client is done a single time; the
+    Groq API key is only needed when a plan is actually generated.
+    """
+    return CarePlanner()
 
 st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
 
@@ -120,3 +133,67 @@ if st.button("Generate schedule", type="primary"):
             st.success("No scheduling conflicts found.")
 
         st.code(scheduler.explain_plan(), language=None)
+
+st.divider()
+
+# --- AI Care Plan (Project 4) --------------------------------------------
+st.subheader("🤖 AI Care Plan")
+st.caption(
+    "Grounds the schedule in a pet-care knowledge base, explains each step with "
+    "citations, refuses unsafe requests, self-critiques, and scores its confidence."
+)
+
+if not os.environ.get("GROQ_API_KEY"):
+    st.warning(
+        "No `GROQ_API_KEY` found. Copy `.env.example` to `.env` and add your free "
+        "Groq key (console.groq.com/keys) to enable the AI plan."
+    )
+
+ai_request = st.text_input(
+    "Optional question or context for the AI (e.g. 'my puppy tires quickly')",
+    value="",
+)
+
+if st.button("Generate AI care plan"):
+    if not owner.all_tasks():
+        st.warning("Add some tasks first, then generate an AI plan.")
+    else:
+        with st.spinner("Retrieving knowledge, planning, and self-critiquing…"):
+            result = get_care_planner().run(owner, request=ai_request)
+
+        if result.plan.refused:
+            # Guardrails blocked the request (e.g. medication dosing).
+            st.error(result.plan.summary)
+        else:
+            st.progress(result.confidence, text=f"Confidence: {result.confidence:.2f}")
+            if result.revised:
+                st.caption(
+                    f"🔧 Self-critique revised the plan to fix "
+                    f"{len(result.problems_before)} issue(s)."
+                )
+            st.write(result.plan.summary)
+
+            if result.plan.steps:
+                st.table(
+                    [
+                        {
+                            "time": s.get("time", "—"),
+                            "pet": s.get("pet", ""),
+                            "task": s.get("task", ""),
+                            "why (grounded)": s.get("rationale", ""),
+                        }
+                        for s in result.plan.steps
+                    ]
+                )
+            if result.plan.notes:
+                st.info(result.plan.notes)
+
+            severity = result.plan.guardrails.get("severity", "ok")
+            badge = {"ok": "✅ clean", "warn": "⚠️ warnings", "block": "⛔ blocked"}
+            st.caption(
+                f"Guardrails: {badge.get(severity, severity)} · "
+                f"Sources retrieved: {', '.join(result.sources) or '—'}"
+            )
+
+            with st.expander("🔍 Reasoning trace (how the AI checked its own work)"):
+                st.markdown(result.to_markdown())

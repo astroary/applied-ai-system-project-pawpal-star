@@ -129,6 +129,25 @@ def test_dosing_in_output_is_blocked():
     assert result.blocked
 
 
+def test_scheduling_a_medication_reminder_is_not_blocked():
+    """Regression: a vet-prescribed medication *reminder* is allowed output.
+
+    The output guardrail must flag real dosing, not the benign word 'medication'
+    in a scheduling rationale (this false positive was caught by the live CLI run).
+    """
+    med = Task("Medication", 10, time="16:00", pet_name="Biscuit")
+    scheduler_plan = [{"time": "16:00", "task": med}]
+    plan = AIPlan(
+        summary="Administer the medication reminder at the vet-prescribed time [S1].",
+        steps=[{"time": "16:00", "pet": "Biscuit", "task": "Medication",
+                "rationale": "give the medication as your veterinarian scheduled [S1]",
+                "sources": ["S1"]}],
+        sources_used=["S1"],
+    )
+    result = verify_output(plan, retrieved_chunks=[object()], scheduler_plan=scheduler_plan)
+    assert not result.blocked
+
+
 # --- Planner integration --------------------------------------------------
 def test_planner_refuses_unsafe_request_without_calling_model(retriever):
     """Unsafe input short-circuits: the LLM is never called."""

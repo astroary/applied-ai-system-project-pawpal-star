@@ -50,10 +50,16 @@ UNSAFE_INPUT_PATTERNS = [
 ]
 
 # Dosing/treatment advice that must never appear in the model's OUTPUT.
+# Deliberately narrow: it targets an actual dose (a number + unit) or telling the
+# owner to give a specific human drug. It must NOT flag the benign, allowed case
+# of scheduling a vet-prescribed medication *reminder* (see health_and_safety.md).
 UNSAFE_OUTPUT_PATTERNS = [
     re.compile(r"\b\d+\s*(mg|ml|milligram|milliliter|cc)\b", re.I),
-    re.compile(r"\bgive\b.*\b(ibuprofen|tylenol|acetaminophen|aspirin|benadryl)\b", re.I),
-    re.compile(r"\b(administer|prescribe)\b.*\b(dose|medication|drug|pill)\b", re.I),
+    re.compile(
+        r"\bgive\b[^.]{0,40}\b(ibuprofen|tylenol|acetaminophen|aspirin|benadryl|"
+        r"paracetamol|naproxen|advil)\b",
+        re.I,
+    ),
 ]
 
 # Matches citation labels like S1, S2 — including inside "[S1, S3, S4]".

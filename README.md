@@ -1,203 +1,227 @@
-# PawPal+ (Module 2 Project)
+# 🐾 PawPal+ AI Care Planner
 
-You are building **PawPal+**, a Streamlit app that helps a pet owner plan care tasks for their pet.
+An applied AI system that turns a deterministic pet-care scheduler into a
+**grounded, self-checking AI planner**. It retrieves real pet-care knowledge,
+explains every scheduling decision with citations, refuses unsafe requests,
+critiques and revises its own plan, scores its confidence, and logs every
+decision for audit.
 
-## Scenario
+**Why it matters:** pet owners get *explained* schedules they can trust — each
+step is backed by a cited source, medical/dosing questions are safely refused
+and redirected to a veterinarian, and low-confidence plans are surfaced as such
+rather than presented as fact.
 
-A busy pet owner needs help staying consistent with pet care. They want an assistant that can:
+---
 
-- Track pet care tasks (walks, feeding, meds, enrichment, grooming, etc.)
-- Consider constraints (time available, priority, owner preferences)
-- Produce a daily plan and explain why it chose that plan
+## 📦 The original project (Module 2): PawPal+
 
-Your job is to design the system first (UML), then implement the logic in Python, then connect it to the Streamlit UI.
+This system extends **PawPal+**, a Streamlit pet-care scheduler built in Module 2.
+The original app let an owner add pets and care tasks (with durations, priorities,
+scheduled times, and daily/weekly recurrence) and produced a **deterministic**
+daily plan: it fit the highest-priority tasks into the owner's time budget,
+sorted and filtered tasks, and flagged scheduling conflicts. Its logic layer
+(`Owner` / `Pet` / `Task` / `Scheduler` in [`pawpal_system.py`](pawpal_system.py))
+remains the trustworthy core of this project.
 
-## What you will build
+## 🚀 What Project 4 adds
 
-Your final app should:
+The AI layer wraps the original scheduler **without ever overriding its math**:
 
-- Let a user enter basic owner + pet info
-- Let a user add/edit tasks (duration + priority at minimum)
-- Generate a daily schedule/plan based on constraints and priorities
-- Display the plan clearly (and ideally explain the reasoning)
-- Include tests for the most important scheduling behaviors
+| Capability | Module | Rubric feature |
+| --- | --- | --- |
+| **RAG** — retrieve grounding from a pet-care knowledge base | [`retrieval.py`](retrieval.py) + [`knowledge_base/`](knowledge_base/) | RAG |
+| **AI planner** — LLM explains + cites the plan | [`ai_planner.py`](ai_planner.py), [`llm_client.py`](llm_client.py) | RAG / integration |
+| **Guardrails** — input refusal + output groundedness/fidelity/safety | [`guardrails.py`](guardrails.py) | Guardrails |
+| **Self-critique + confidence** — the AI reviews and revises itself | [`critique.py`](critique.py) | Agentic workflow |
+| **Decision logging + reasoning traces** | [`decision_log.py`](decision_log.py) | Logging |
+| **Reliability evaluation harness** | [`evaluation/harness.py`](evaluation/harness.py) | Testing |
+| **Orchestrator** tying it all together | [`care_planner.py`](care_planner.py) | Integration |
 
-## ✨ Features
+The AI model is served by **Groq** (`llama-3.3-70b-versatile`) behind a
+provider-swappable client, so switching to another provider means editing one
+file.
 
-- **Multi-pet management** — one owner can track multiple pets, each with its own task list (`Owner`, `Pet`).
-- **Priority-aware daily plan** — `Scheduler.generate_plan()` fits the highest-priority tasks into the owner's time budget and explains its choices.
-- **Sorting by time** — `Scheduler.sort_by_time()` returns tasks in chronological order regardless of entry order.
-- **Filtering** — by completion status or pet (`filter_by_status()`, `filter_by_pet()`).
-- **Conflict warnings** — `detect_conflicts()` flags tasks sharing a start time and returns a warning instead of crashing.
-- **Daily / weekly recurrence** — completing a recurring task auto-creates its next occurrence (`Task.next_occurrence()`).
+---
 
-## Getting started
+## 🏗️ Architecture overview
 
-### Setup
+The full diagram source is [`diagrams/architecture.mmd`](diagrams/architecture.mmd).
+Data flows **input → process → output**, orchestrated by `CarePlanner`:
+
+1. **Input guardrails** validate the request and refuse anything unsafe
+   (dosing, diagnosis) *before* any model call.
+2. The deterministic **Scheduler** produces the base time-boxed plan.
+3. The **Retriever (RAG)** pulls the most relevant `knowledge_base/*.md` sections.
+4. The **AI planner** grounds and explains the plan, citing sources as `[S1]`.
+5. **Output guardrails** verify groundedness (citations are real), plan-fidelity
+   (steps match the schedule), and safety (no dosing advice).
+6. The **self-critique loop** reviews the plan against those findings, revises it
+   only if the revision is strictly safer, and scores **confidence**.
+7. Every decision is written to a **JSONL audit log** and the reasoning trace to
+   `ai_interactions.md`. The **evaluation harness** and **pytest suite** are the
+   checkpoints where the AI's behavior is verified.
+
+---
+
+## ⚙️ Setup instructions
+
+Requires **Python 3.10+** (developed on 3.12; the code uses `X | None` syntax).
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+# 1. Create and activate a virtual environment
+python3.12 -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+
+# 2. Install dependencies
 pip install -r requirements.txt
+
+# 3. Add your Groq API key (free at https://console.groq.com/keys)
+cp .env.example .env
+#   then edit .env and set GROQ_API_KEY=gsk_...
+
+# 4. Run it
+streamlit run app.py               # web UI (AI plan lives under "🤖 AI Care Plan")
+python main.py                     # CLI demo (deterministic + AI plan)
+python -m evaluation.harness       # reliability evaluation → evaluation/results.md
+python -m pytest                   # 78 automated tests
 ```
 
-### Suggested workflow
+The `.env` file is gitignored; only the `.env.example` template is committed.
+The RAG retriever and all tests run offline — only generating an actual AI plan
+calls Groq.
 
-1. Read the scenario carefully and identify requirements and edge cases.
-2. Draft a UML diagram (classes, attributes, methods, relationships).
-3. Convert UML into Python class stubs (no logic yet).
-4. Implement scheduling logic in small increments.
-5. Add tests to verify key behaviors.
-6. Connect your logic to the Streamlit UI in `app.py`.
-7. Refine UML so it matches what you actually built.
+---
 
-## 🖥️ Sample Output
+## 💬 Sample interactions
 
-Terminal output from running `python main.py`:
-
-```
-==================================================
-Tasks sorted by time:
-  07:30 — Morning walk (Biscuit) [high]
-  08:00 — Feeding (Biscuit) [high]
-  08:00 — Feeding (Mochi) [high]
-  12:00 — Litter cleanup (Mochi) [medium]
-  18:00 — Evening walk (Biscuit) [medium]
-
-==================================================
-Filtered — Biscuit's tasks only:
-  18:00 — Evening walk (Biscuit) [medium]
-  07:30 — Morning walk (Biscuit) [high]
-  08:00 — Feeding (Biscuit) [high]
-
-==================================================
-Conflict detection:
-  ⚠️  Conflict at 08:00: Feeding (Biscuit), Feeding (Mochi)
-
-==================================================
-Recurring task: completing Biscuit's daily 'Morning walk'...
-  Marked complete: Morning walk (completed=True)
-  Auto-created next occurrence due: 2026-06-24 (completed=False)
-```
-
-## 🧪 Testing PawPal+
-
-Run the full test suite from the project root:
-
-```bash
-python -m pytest
-
-# Run with coverage:
-pytest --cov
-```
-
-**What the tests cover** (`tests/test_pawpal.py`, 12 tests):
-
-- **Task basics** — `mark_complete()` flips status; adding a task grows the pet's count and stamps the pet's name.
-- **Sorting correctness** — out-of-order tasks return in chronological `"HH:MM"` order; untimed tasks sort last.
-- **Filtering** — `filter_by_status()` and `filter_by_pet()` return only matching tasks.
-- **Recurrence logic** — completing a daily task queues one due tomorrow; weekly advances 7 days; a `"once"` task creates no follow-up.
-- **Conflict detection** — two tasks at the same time produce exactly one warning; distinct times produce none.
-- **Edge case** — an owner whose pet has no tasks yields an empty plan and no conflicts (no crash).
-
-Sample test output:
+### 1. A grounded, self-critiqued daily plan
+**Input:** Owner Jordan (120 min); dog Biscuit + cat Mochi with 6 tasks
+(walks, feedings, litter, a medication reminder).
+**Output** (`Confidence: 0.96 · Revised: True · Guardrails: ok`):
 
 ```
-collected 12 items
+Today's plan includes feeding, medication, walks, and litter cleanup for
+Biscuit and Mochi, with a focus on maintaining a consistent routine.
 
-tests/test_pawpal.py ............                                         [100%]
-
-============================== 12 passed in 0.02s ==============================
+08:00  Biscuit  Feeding        Feeding at a consistent time reduces digestive
+                               upset and begging; adult dogs are fed twice a day [S2]
+08:20  Mochi    Medication     A reminder to administer medication as prescribed by
+                               the veterinarian — the assistant cannot advise dosing [S1]
+09:00  Mochi    Litter cleanup Scooping at least once a day maintains hygiene; sudden
+                               changes in litter habits can signal illness [S3]
+...
+Sources: health_and_safety.md > Medication and dosing require a veterinarian,
+         dog_care.md > Feeding frequency, cat_care.md > Litter box care
 ```
 
-**Confidence level: ★★★★☆ (4/5)** — All core behaviors and the main edge cases pass. Docked one star because conflict detection only checks exact start times (not overlapping durations), and recurrence isn't yet tested across month/year boundaries.
+Note the **medication reminder is allowed** (grounded in the safety source) while
+any *dosing* is not — see the next example. The self-critique loop revised the
+first draft to fix 2 plan-fidelity issues, raising confidence to 0.96.
 
-## 📐 Smarter Scheduling
-
-> Fill in once you've implemented scheduling logic.
-
-| Feature | Method(s) | Notes |
-|---------|-----------|-------|
-| Task sorting | `Scheduler.sort_by_time()`, `Task.priority_rank()` | Sort by scheduled `"HH:MM"` time; `generate_plan()` orders by priority then duration |
-| Filtering | `Scheduler.filter_by_status()`, `Scheduler.filter_by_pet()` | Filter by completion status or pet name |
-| Conflict handling | `Scheduler.detect_conflicts()` | Flags tasks sharing an exact start time; returns warnings instead of crashing |
-| Recurring tasks | `Pet.complete_task()`, `Task.next_occurrence()` | Completing a daily/weekly task auto-creates the next occurrence via `timedelta` |
-
-## 🎬 Demo Walkthrough
-
-Launch the app with `streamlit run app.py`, then:
-
-1. **Set up the owner** — enter your name and how many minutes you have for pet care today (the daily time budget the scheduler plans within).
-2. **Add pets** — submit the "Add pet" form for each pet (e.g., Biscuit the dog, Mochi the cat). Each pet keeps its own task list.
-3. **Add tasks** — for each pet, add care tasks with a duration, priority, scheduled time, and frequency (daily/weekly/once). The "All tasks" table updates and shows everything **sorted by time**, even when entered out of order.
-4. **Generate the schedule** — click **Generate schedule**. The app:
-   - shows **conflict warnings** (`st.warning`) if two tasks share a start time, or a success message if none,
-   - prints a **priority-ordered daily plan** that fits your time budget and lists any tasks skipped for lack of time.
-
-Key `Scheduler` behaviors you'll see in action: **time sorting**, **conflict warnings**, and **priority-based planning within a time budget**.
-
-### Sample CLI output (`python main.py`)
-
-The CLI demo prints color-coded, tabulated tables (color shown only in an interactive terminal):
+### 2. An unsafe request is refused
+**Input:** *"How much ibuprofen can I give Biscuit for his limp?"*
+**Output** (`refused: True · confidence: 0.0`, **no model call made**):
 
 ```
-============================================================
-All tasks (sorted by time)
-============================================================
-╭────────┬─────────┬────────────────┬───────┬────────────┬────────╮
-│ Time   │ Pet     │ Task           │ Dur   │ Priority   │ Done   │
-├────────┼─────────┼────────────────┼───────┼────────────┼────────┤
-│ 07:30  │ Biscuit │ Morning walk   │ 30m   │ 🔴 high    │ ⬜     │
-│ 08:00  │ Biscuit │ Feeding        │ 10m   │ 🔴 high    │ ⬜     │
-│ 08:00  │ Mochi   │ Feeding        │ 10m   │ 🔴 high    │ ⬜     │
-│ 09:00  │ Mochi   │ Litter cleanup │ 15m   │ 🟡 medium  │ ⬜     │
-│ 16:00  │ Mochi   │ Medication     │ 10m   │ 🔴 high    │ ⬜     │
-│ 18:00  │ Biscuit │ Evening walk   │ 30m   │ 🟡 medium  │ ⬜     │
-╰────────┴─────────┴────────────────┴───────┴────────────┴────────╯
-
-============================================================
-Conflict detection
-============================================================
-  ⚠️  Conflict at 08:00: Feeding (Biscuit), Feeding (Mochi)
-
-============================================================
-Next available slot (Challenge 1)
-============================================================
-  Earliest free 20-min slot: 08:10
-  Earliest free 45-min slot: 08:10
-  Earliest free 90-min slot: 09:15
+I can't help with medical, diagnostic, or medication/dosing questions — those
+depend on your pet's exact health and can be dangerous if wrong. Please contact
+your veterinarian or a pet poison hotline. I can still help you schedule walks,
+feedings, play, grooming, and vet-prescribed reminders.
 ```
 
-**Screenshot or video** *(optional)*: <!-- Insert a screenshot or link to a demo video here -->
+### 3. The AI catches and fixes its own mistake
+On a two-pet input, the model's first draft merged both pets into one step
+(`"Biscuit, Mochi"`). The **output guardrail flagged 2 plan-drift issues**, the
+**self-critique loop revised** the plan to assign each task to the correct pet,
+and re-verification returned **0 issues** — logged in
+[`ai_interactions.md`](ai_interactions.md).
 
-## 🧩 Optional Extensions
+---
 
-These build on the core project. All are exercised by `python main.py` and covered by the test suite.
+## 🔎 RAG enhancement (before → after)
 
-### Challenge 1 — Next available slot
-`Scheduler.next_available_slot(duration_minutes)` scans the day from `start_hour`, steps over already-timed tasks, and returns the earliest `"HH:MM"` gap big enough for a task of the given length (or `None` if the day is full). In the demo, a 20- or 45-minute task fits at `08:10`, but a 90-minute task is pushed to `09:15` because it can't fit the morning gap:
+The first retriever used plain TF-IDF and kept surfacing low-value **"Overview"**
+intro/disclaimer chunks, because generic query words ("dog", "care", "daily")
+matched them. The enhancement **boosts section-heading terms** and
+**down-weights Overview intros**. Same query, top-4 sources:
+
+| Before (plain TF-IDF) | After (heading-boost + Overview penalty) |
+| --- | --- |
+| dog_care.md > **Overview** | cat_care.md > **Litter box care** |
+| exercise_and_enrichment.md > Splitting activity | exercise_and_enrichment.md > Splitting activity |
+| cat_care.md > **Overview** | cat_care.md > **Daily play and enrichment** |
+| feeding.md > **Overview** | cat_care.md > **Indoor safety and routine** |
+
+Three of four sources were non-informative disclaimers before; after the change,
+all four are topical, so the AI grounds its plan in real guidance.
+
+---
+
+## 🧠 Design decisions & trade-offs
+
+- **Deterministic core, AI on top.** The `Scheduler` still owns "what fits the
+  time budget" and "what conflicts." The LLM only explains and grounds — a
+  plan-fidelity guardrail rejects any step that drifts from the schedule. This
+  keeps the trustworthy math immune to model hallucination.
+- **Dependency-free RAG.** TF-IDF + cosine similarity in pure Python (no
+  numpy/sklearn/vector DB) keeps the project reproducible and fast for a small
+  corpus. Trade-off: no semantic/synonym matching — acceptable here, and the
+  top-k + guardrails compensate.
+- **Provider-swappable LLM client.** One small `chat()` surface isolates Groq, so
+  the vendor choice isn't baked into the system (and unit tests inject a fake LLM).
+- **Guardrails refuse before spending a call.** Unsafe input short-circuits with
+  zero token cost; a separate output check is the backstop if the model slips.
+- **Self-critique can't make things worse.** A revision is accepted only if it is
+  safe *and strictly reduces* the number of issues — otherwise the original stands.
+- **Confidence blends objective + subjective signals** (60% guardrail-based,
+  40% the model's self-rating) so the number reflects verified reliability, not
+  just the model's optimism.
+
+---
+
+## 🧪 Testing summary
+
+- **78 automated tests** (`pytest`), all passing — covering the original logic,
+  retrieval ranking, guardrail refusals, groundedness/fidelity, the self-critique
+  loop, logging, and the evaluation harness. Tests write only to temp dirs.
+- **Reliability harness** (`python -m evaluation.harness`) runs 5 predefined
+  scenarios and scored **5/5 scenarios, 13/13 checks, avg confidence 0.96**
+  (see [`evaluation/results.md`](evaluation/results.md)).
+
+**What worked:** grounding + citations are consistent, and the self-critique loop
+reliably fixes plan-drift (2 issues → 0 in the sample run).
+
+**What didn't (and was fixed):** integration testing caught an over-aggressive
+output guardrail that blocked a *legitimate* medication **reminder** (it matched
+"administer medication"). The pattern was narrowed to real dosing (a number +
+unit, or "give <human drug>") and a regression test was added.
+
+**What I learned:** guardrails need to be tested against *benign-but-similar*
+inputs, not just unsafe ones — the false-positive was as important to catch as
+the true refusal.
+
+---
+
+## 📁 Project structure
 
 ```
-  Earliest free 20-min slot: 08:10
-  Earliest free 45-min slot: 08:10
-  Earliest free 90-min slot: 09:15
+pawpal_system.py     # deterministic core (Owner/Pet/Task/Scheduler) — Module 2
+retrieval.py         # RAG retriever over knowledge_base/
+knowledge_base/      # 5 pet-care source documents
+llm_client.py        # provider-swappable LLM client (Groq)
+ai_planner.py        # grounded plan generation + parsing
+guardrails.py        # input refusal + output verification
+critique.py          # self-critique loop + confidence scoring
+decision_log.py      # JSONL audit log + reasoning-trace writer
+care_planner.py      # orchestrator (the app's entry point)
+app.py / main.py     # Streamlit UI / CLI demo
+evaluation/          # reliability evaluation harness + results.md
+tests/               # 78 pytest tests
+diagrams/            # architecture.mmd (+ Module 2 UML)
 ```
 
-### Challenge 2 — Data persistence
-`Owner.save_to_json(path)` and `Owner.load_from_json(path)` serialize the entire owner → pets → tasks tree to `data.json` and rebuild it on load. Serialization is handled by `to_dict()` / `from_dict()` on each class; `date` fields are stored as ISO strings and parsed back on load. **Workflow:** the demo saves state to `data.json` after building the schedule, then reloads it to prove the round-trip. `data.json` is git-ignored since it's regenerated at runtime. *(Files modified: `pawpal_system.py`, `main.py`, `.gitignore`.)*
+## 📝 Reflection & responsible AI
 
-### Challenge 3 — Advanced priority scheduling
-`Scheduler.sort_by_priority_then_time()` sorts by priority first (high → low), then by time — so an important task scheduled later still leads the list. Note how the `16:00` Medication (high) jumps above the `09:00` Litter cleanup (medium):
-
-```
-By priority, then time:
-  07:30  Morning walk    🔴 high
-  08:00  Feeding         🔴 high
-  08:00  Feeding         🔴 high
-  16:00  Medication      🔴 high     <- late, but high priority
-  09:00  Litter cleanup  🟡 medium
-  18:00  Evening walk    🟡 medium
-```
-
-### Challenge 4 — Professional output formatting
-The CLI uses the [`tabulate`](https://pypi.org/project/tabulate/) library (`rounded_outline` format) for bordered tables, plus emoji priority indicators (🔴/🟡/🟢) and status markers (✅/⬜). ANSI color is applied only when writing to an interactive terminal (`sys.stdout.isatty()`), so piped/redirected output stays clean. *(Library used: `tabulate`; see `task_table()` in `main.py`.)*
+The graded responsible-AI reflection — limitations/biases, misuse prevention,
+what surprised me while testing reliability, and my AI-collaboration notes — is
+in [`model_card.md`](model_card.md).

@@ -3,11 +3,14 @@
 Run with:  python main.py
 """
 
+import os
 import sys
 
 from tabulate import tabulate
 
 from pawpal_system import Owner, Pet, Task, Scheduler
+# Project 4: the full AI layer, behind one orchestrator.
+from care_planner import CarePlanner
 
 # Challenge 4: color-coded, emoji status indicators for terminal output.
 # Color is only emitted to an interactive terminal so piped output stays clean.
@@ -38,6 +41,36 @@ def task_table(tasks) -> str:
 
 def banner(text: str) -> None:
     print("\n" + "=" * 60 + f"\n{text}\n" + "=" * 60)
+
+
+def ai_demo(owner: Owner) -> None:
+    """Project 4: run the AI Care Planner and show a grounded plan + a refusal."""
+    banner("AI Care Plan (Project 4)")
+    if not os.environ.get("GROQ_API_KEY"):
+        print("  (Set GROQ_API_KEY in .env to run the AI planner — skipping.)")
+        return
+
+    planner = CarePlanner()
+    result = planner.run(owner)
+    print(f"  Confidence: {result.confidence:.2f}   Revised: {result.revised}   "
+          f"Guardrails: {result.plan.guardrails.get('severity', '—')}")
+    print(f"  Sources retrieved: {', '.join(result.sources)}\n")
+    print(f"  {result.plan.summary}\n")
+    rows = [
+        [s.get("time", "—"), s.get("pet", ""), s.get("task", ""), s.get("rationale", "")]
+        for s in result.plan.steps
+    ]
+    print(tabulate(
+        rows,
+        headers=["Time", "Pet", "Task", "Why (grounded in sources)"],
+        tablefmt="rounded_outline",
+        maxcolwidths=[6, 10, 16, 58],
+    ))
+
+    banner("Guardrail demo: an unsafe request is refused (no plan produced)")
+    refusal = planner.run(owner, request="How much ibuprofen can I give Biscuit?")
+    print(f"  refused = {refusal.plan.refused}")
+    print(f"  {refusal.plan.summary}")
 
 
 def main() -> None:
@@ -84,6 +117,9 @@ def main() -> None:
     reloaded = Owner.load_from_json("data.json")
     print(f"  Saved to data.json, reloaded owner '{reloaded.name}' "
           f"with {len(reloaded.pets)} pets and {len(reloaded.all_tasks())} tasks.")
+
+    # Project 4: layer the AI Care Planner on top of the deterministic core.
+    ai_demo(owner)
 
 
 if __name__ == "__main__":

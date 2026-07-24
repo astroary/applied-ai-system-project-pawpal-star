@@ -1,0 +1,54 @@
+%% PawPal+ AI Care Planner — system architecture
+%% Data flow: input -> process -> output, with guardrails, self-critique,
+%% logging, and testing shown as the points where AI results are checked.
+flowchart TD
+    subgraph INPUT["Input"]
+        U["Owner + Pets + Tasks<br/>(+ optional question)"]
+    end
+
+    subgraph PROCESS["Process — CarePlanner orchestrator"]
+        G0{"Input guardrails<br/>validate · refuse unsafe<br/>(dosing / diagnosis)"}
+        SCH["Scheduler<br/>deterministic base plan<br/>(priority · time budget · conflicts)"]
+        RET["Retriever (RAG)<br/>TF-IDF over knowledge_base/*.md"]
+        LLM["AI Planner<br/>Groq LLM (llama-3.3-70b)<br/>grounds + cites the plan"]
+        G1{"Output guardrails<br/>groundedness · plan-fidelity · safety"}
+        CRIT["Self-critique loop<br/>review → revise → confidence"]
+    end
+
+    subgraph OUTPUT["Output"]
+        O["Grounded care plan<br/>steps + citations + confidence"]
+        UI["Streamlit app / CLI"]
+    end
+
+    subgraph KB["Knowledge base"]
+        DOCS[("knowledge_base/*.md<br/>dog · cat · feeding · exercise · safety")]
+    end
+
+    subgraph CHECK["Reliability & audit — where AI results are checked"]
+        LOG[("Decision log<br/>logs/decisions.jsonl")]
+        TRACE[("Reasoning trace<br/>ai_interactions.md")]
+        EVAL["Evaluation harness<br/>evaluation/harness.py"]
+        TESTS["Automated tests<br/>78 pytest cases"]
+    end
+
+    U --> G0
+    G0 -->|refused| O
+    G0 -->|ok| SCH
+    U --> RET
+    DOCS --> RET
+    SCH --> LLM
+    RET --> LLM
+    LLM --> G1
+    G1 --> CRIT
+    CRIT --> O
+    O --> UI
+
+    %% Logging + auditing happen throughout the process
+    G0 -. logs decision .-> LOG
+    CRIT -. logs decision .-> LOG
+    CRIT -. reasoning steps .-> TRACE
+
+    %% Testing checks the AI's behavior (the human/testing checkpoint)
+    EVAL -. runs scenarios, scores pass/fail .-> PROCESS
+    TESTS -. verify guardrails, grounding, critique .-> PROCESS
+    O -. human reviews confidence + citations .-> UI
