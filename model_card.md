@@ -1,84 +1,105 @@
-# Model Card & Responsible-AI Reflection — PawPal+ AI Care Planner
+# Model Card & Reflection — PawPal+ AI Care Planner
 
-**System:** an AI layer over a deterministic pet-care scheduler. It retrieves
-pet-care knowledge (RAG), generates a grounded, cited daily plan with a Groq
-`llama-3.3-70b-versatile` model, enforces guardrails, self-critiques, scores
-confidence, and logs every decision.
+A quick honest write-up of what this system is, where it falls short, and what I
+learned building it.
 
-**Intended use:** scheduling routine pet care — walks, feedings, play, grooming,
-litter care, and reminders for treatments a veterinarian has already prescribed.
+**What it is:** I took my Module 2 pet-care scheduler and put an AI layer on top
+of it. The scheduler still decides what fits in your day; the AI (a Groq
+`llama-3.3-70b` model) explains the plan, backs each step with a cited source
+from a small pet-care knowledge base, refuses anything medical, double-checks its
+own work, and gives a confidence score. Every decision gets logged.
 
-**Out of scope (by design):** medical diagnosis, symptom interpretation, and any
-medication dosing or treatment advice. These are refused and redirected to a vet.
+**What it's for:** planning everyday pet care — walks, feedings, play, grooming,
+litter, and reminders for treatments a vet already prescribed. It is **not** a
+vet. It won't diagnose anything or tell you how much medicine to give, on purpose.
 
 ---
 
 ## Limitations and biases
 
-- **Deterministic feasibility is not AI-verified.** Whether tasks fit the time
-  budget is decided by the `Scheduler`, not the model. That's a strength for
-  trust, but it means the AI's "improvements" are limited to explanation and
-  ordering — it cannot, for example, suggest dropping a low-value task.
-- **Retrieval is lexical, not semantic.** The TF-IDF retriever matches words, not
-  meaning, so a query using synonyms the knowledge base doesn't contain
-  ("stroll" vs. "walk") may retrieve weaker sources. Top-k retrieval and the
-  groundedness guardrail reduce, but don't eliminate, this.
-- **Knowledge-base bias.** The five source documents are general, English-only,
-  Western pet-care norms centered on dogs and cats. Advice for other species,
-  regions, or edge cases is simply absent, and the system will ground on the
-  closest available (possibly inappropriate) section.
-- **Confidence is a heuristic.** The score blends guardrail results with the
-  model's self-rating; a plan can be confidently wrong if a flaw isn't one the
-  guardrails check for.
-- **Single-model, single-provider.** Behavior depends on one Groq model's
-  quality and availability (though the client is swappable).
+I want to be upfront that this system is narrower than it might look.
 
-## Could the AI be misused, and how is that prevented?
+The AI never actually decides whether your day is feasible — my original
+`Scheduler` does that math, and the AI only explains and reorders around it. I
+did that deliberately so the model can't hallucinate a broken schedule, but it
+does mean the AI can't do something genuinely smart like "you're overloaded,
+drop the low-priority task."
 
-- **Seeking medical/dosing advice.** The most serious misuse. Prevented by
-  **input guardrails** that refuse dosing/diagnosis/prescription requests *before*
-  any model call, and by an **output guardrail** that blocks a real dose (a
-  number + unit, or "give <human drug>") if the model ever emits one. The
-  knowledge base itself encodes the "defer to a vet" boundary.
-- **Over-trusting the output.** Prevented by surfacing a **confidence score**,
-  **inline citations**, and a **guardrail status** so users can see how grounded
-  a plan is, plus a visible reasoning trace.
-- **Silent unsafe behavior.** Prevented by the **JSONL decision log**, which
-  records every refusal, guardrail outcome, and confidence score for audit.
-- **Residual risk:** a determined user could rephrase to evade the refusal
-  patterns. The layered defense (input + output + knowledge-base framing) lowers
-  this risk but does not fully remove it; keyword patterns would benefit from a
-  dedicated safety-classifier model in future work.
+The retrieval is keyword-based (TF-IDF), so it matches words, not meaning. If I
+ask about a "stroll" and my notes only say "walk," it might miss the right
+source. And the knowledge base itself is just five short documents of general,
+English, fairly Western dog-and-cat advice — so anything about other species,
+other regions, or unusual situations simply isn't there, and the system will
+reach for the closest thing it has, which won't always be right.
+
+The confidence score is a helpful signal, not truth. It mixes my guardrail
+checks with the model's own self-rating, so a plan can still be confidently wrong
+if the mistake isn't one my checks look for. And all of this rides on one model
+from one provider (though I did wrap it so it's easy to swap).
+
+## Could this be misused, and how do I prevent it?
+
+The misuse I worried about most is someone treating it like a vet — asking how
+much ibuprofen to give their dog, for example. That's genuinely dangerous, so I
+block it in two places: the input guardrail refuses dosing, diagnosis, and
+prescription questions *before* the model is even called, and a second check on
+the output catches an actual dose (a number plus a unit, or "give <human drug>")
+if the model ever slips one through. The knowledge base reinforces this by
+literally telling the assistant to defer to a vet.
+
+The other risk is quieter: people over-trusting whatever the AI says. I tried to
+push against that by always showing citations, a confidence score, and a
+guardrail status, plus a reasoning trace you can open up — so it reads as "here's
+my reasoning, check it" rather than "here's the answer." And because every
+decision (including refusals) is written to a JSONL log, nothing it does is
+invisible.
+
+I'm not pretending this is airtight. A determined person could reword a question
+to slip past my keyword patterns. The layered approach lowers the risk, but a
+real safety classifier would do better, and that's where I'd take it next.
 
 ## What surprised me while testing reliability
 
-The biggest surprise was that a **guardrail can fail by being too strict**, not
-just too loose. My output-safety check originally blocked any text matching
-"administer/prescribe … medication." When I ran the full CLI end-to-end, a
-completely legitimate plan — one that simply *scheduled a vet-prescribed
-medication reminder* — was refused with 0.0 confidence. The unit tests hadn't
-caught it because they only tested clearly-unsafe inputs. It taught me to test
-guardrails against **benign-but-similar** cases, and I narrowed the pattern to
-real dosing and added a regression test. I was also (pleasantly) surprised how
-reliably the **self-critique loop** fixed the model's own plan-drift — a draft
-that merged two pets into one step was consistently corrected to 0 issues.
+The thing I did not see coming: a guardrail can fail by being *too strict*.
 
-## Collaboration with AI during this project
+My output-safety check originally blocked any text like "administer medication."
+That sounded reasonable, and it passed all my unit tests — because I'd only
+tested obviously-unsafe inputs. Then I ran the whole app end-to-end for the first
+time and a perfectly normal plan came back **refused, confidence 0.0**. The only
+"crime" was that it scheduled a *vet-prescribed medication reminder* and used the
+word "administer." A legitimate, in-scope feature was being killed by my own
+safety rule.
 
-I built this system in a guided collaboration with an AI coding assistant,
-working phase by phase (RAG → planner → guardrails → self-critique → logging →
-evaluation → docs). I made all the design decisions and every git commit; the
-assistant wrote and explained code, ran the tests, and flagged issues.
+That flipped how I think about guardrails. I'd been testing them like a
+prosecutor — only throwing bad inputs at them — when I also needed to test them
+like a defense attorney, with benign-but-similar cases. I narrowed the rule to
+real dosing and added a regression test for the reminder case.
 
-- **A helpful suggestion:** the assistant proposed a **plan-fidelity guardrail**
-  that checks every AI step against the deterministic schedule. This directly
-  caught the model merging two pets into a single step — a subtle failure I would
-  likely have missed by eye — and became the trigger the self-critique loop uses
-  to fix such drift.
-- **A flawed suggestion:** the assistant's first version of the **output-safety
-  guardrail** was over-aggressive and blocked a legitimate medication *reminder*
-  (it matched the words "administer medication"). It looked reasonable in review
-  and passed the initial unit tests, but it broke a valid, in-scope use case that
-  only surfaced when I ran the whole app. I had it narrow the rule to actual
-  dosing and add a regression test. The lesson: AI-suggested safety rules still
-  need adversarial *and* benign testing before I trust them.
+The happier surprise was the self-critique loop. On a two-pet plan the model kept
+smushing both pets into one step, and the loop caught it and rebuilt the plan
+correctly every time (2 issues → 0). Watching the AI fix its own mistake was the
+moment the "agentic" part actually clicked for me.
+
+## My collaboration with AI (one helpful, one flawed)
+
+I built this with an AI coding assistant, going phase by phase — RAG, then the
+planner, guardrails, self-critique, logging, evaluation, and docs. I made the
+design calls and every commit myself; the assistant wrote code, ran the tests,
+and pointed out problems as we went.
+
+**Where it really helped:** it suggested a *plan-fidelity* guardrail — a check
+that every step the AI produces actually matches a task in the deterministic
+schedule. I hadn't thought to verify that, and it immediately caught the model
+merging two pets into one step. That single idea ended up being the backbone of
+how the self-critique loop knows what to fix.
+
+**Where it was wrong:** the assistant's first version of the output-safety
+guardrail was the over-aggressive one I described above — it looked fine in
+review and passed the tests, but it broke a real, valid use case (the medication
+reminder) that only showed up when I ran the app for real. It was a good reminder
+that I can't just accept AI-written safety logic because it looks careful; I have
+to test it against the normal cases too, not only the scary ones.
+
+Biggest takeaway: the AI was great for moving fast and catching things I'd miss,
+but the judgment about *what "safe" and "correct" actually mean here* had to stay
+with me.
