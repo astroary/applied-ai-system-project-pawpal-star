@@ -67,6 +67,19 @@ def test_search_respects_k(retriever):
     assert scores == sorted(scores, reverse=True)
 
 
+def test_topical_section_outranks_overview(retriever):
+    """RAG enhancement: down-weighted 'Overview' intros lose to real sections."""
+    hits = retriever.search("feeding schedule frequency for my dog", k=3)
+    assert hits[0].section != "Overview"
+    assert hits[0].source == "dog_care.md"
+
+
+def test_heading_terms_boost_matching_section(retriever):
+    """RAG enhancement: a query matching a heading retrieves that section first."""
+    hits = retriever.search("litter box", k=1)
+    assert hits and hits[0].section == "Litter box care"
+
+
 def test_medication_query_retrieves_safety_section(retriever):
     """A dosing query should retrieve the health/safety boundary chunk.
 

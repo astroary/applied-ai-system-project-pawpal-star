@@ -35,6 +35,12 @@ STOP_WORDS = {
 # Where the knowledge base lives, relative to this file.
 DEFAULT_KB_DIR = Path(__file__).parent / "knowledge_base"
 
+# Retrieval-quality tuning (Phase 6 / RAG-enhancement stretch):
+#   * heading tokens are strong topical labels, so count them extra;
+#   * "Overview" intros are disclaimers, not answers, so discount their score.
+HEADING_BOOST = 3
+OVERVIEW_PENALTY = 0.4
+
 
 def tokenize(text: str) -> list[str]:
     """Lowercase, split on non-letters, and drop stop words and 1-char tokens."""
@@ -128,10 +134,16 @@ class Retriever:
         return chunks
 
     def _build_index(self) -> None:
-        """Compute each chunk's term frequencies and the corpus-wide IDF."""
+        """Compute each chunk's term frequencies and the corpus-wide IDF.
+
+        Heading tokens are counted ``HEADING_BOOST`` times so that a section
+        whose title matches the query (e.g. "Feeding frequency" for a feeding
+        question) outranks a generic intro that merely shares common words.
+        """
         doc_freq: Counter = Counter()
         for chunk in self.chunks:
-            chunk._tf = Counter(tokenize(chunk.text))
+            tokens = tokenize(chunk.text) + tokenize(chunk.section) * HEADING_BOOST
+            chunk._tf = Counter(tokens)
             for term in chunk._tf:
                 doc_freq[term] += 1
 
@@ -177,7 +189,10 @@ class Retriever:
 
         scored: list[Chunk] = []
         for chunk in self.chunks:
-            chunk.score = self._cosine(query_vec, self._vector(chunk._tf))
+            score = self._cosine(query_vec, self._vector(chunk._tf))
+            if chunk.section == "Overview":
+                score *= OVERVIEW_PENALTY  # discount non-topical intro/disclaimer text
+            chunk.score = score
             if chunk.score > 0.0:
                 scored.append(chunk)
 
