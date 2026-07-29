@@ -11,7 +11,7 @@ step is backed by a cited source, medical/dosing questions are safely refused
 and redirected to a veterinarian, and low-confidence plans are surfaced as such
 rather than presented as fact.
 
-**🎥 Demo video:** [5-minute walkthrough (Google Drive)](https://drive.google.com/file/d/1u9sxhFSViXeqbcIUVpiPeTX4iGQqkKK3/view)
+**🎥 [Video demo](https://drive.google.com/file/d/1u9sxhFSViXeqbcIUVpiPeTX4iGQqkKK3/view)**
 
 ---
 
