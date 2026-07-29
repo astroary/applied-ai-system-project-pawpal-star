@@ -1,4 +1,4 @@
-# 🐾 PawPal+ AI Care Planner
+# 🐾 PawPal* AI Care Planner
 
 An applied AI system that turns a deterministic pet-care scheduler into a
 **grounded, self-checking AI planner**. It retrieves real pet-care knowledge,
