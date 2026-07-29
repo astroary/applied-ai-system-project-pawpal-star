@@ -168,10 +168,30 @@ feedings, play, grooming, and vet-prescribed reminders.
 ```
 
 ### 3. The AI catches and fixes its own mistake
-On a two-pet input, the model's first draft merged both pets into one step
-(`"Biscuit, Mochi"`). The **output guardrail flagged 2 plan-drift issues**, the
-**self-critique loop revised** the plan to assign each task to the correct pet,
-and re-verification returned **0 issues** — logged in
+**Input:** three pets (Biscuit + Rex dogs, Mochi cat) with feeding and walk tasks
+all colliding at 08:00.
+**Output** — the output guardrail flagged the model merging pets into shared
+steps, and the self-critique loop rewrote each step to the correct pet
+(`Issues 4 → 0 · Revised: True · confidence 0.96`):
+
+```
+First draft (before critique):
+  08:00 · Biscuit, Mochi, Rex · Feeding        <- 3 pets merged into one step (drift)
+  08:10 · Biscuit, Mochi, Rex · Feeding
+  08:30 · Biscuit, Rex        · Morning walk   <- 2 dogs merged (drift)
+  09:00 · Mochi               · Play session
+
+After self-critique:
+  08:00 · Biscuit · Feeding                    <- each feeding split to one pet
+  08:10 · Mochi   · Feeding
+  08:20 · Rex     · Feeding
+  08:30 · Biscuit · Morning walk               <- walk reassigned to just Biscuit
+  09:00 · Mochi   · Play session
+```
+
+The plan-fidelity guardrail makes this catchable: every AI step must map to a
+real `(pet, task)` in the deterministic schedule, so a merged step can't slip
+through. The full trace is committed in
 [`ai_interactions.md`](ai_interactions.md).
 
 ---

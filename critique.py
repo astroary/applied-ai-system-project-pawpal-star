@@ -87,6 +87,7 @@ class CritiqueResult:
     revised: bool = False
     model_self_confidence: float = 0.0
     sources: list[str] = field(default_factory=list)  # citations of retrieved chunks
+    initial_steps: list[dict] = field(default_factory=list)  # draft before critique
     trace: list[dict] = field(default_factory=list)
 
     @classmethod
@@ -109,8 +110,19 @@ class CritiqueResult:
             "revised": self.revised,
             "model_self_confidence": self.model_self_confidence,
             "sources": self.sources,
+            "initial_steps": self.initial_steps,
             "plan": self.plan.to_dict(),
         }
+
+    @staticmethod
+    def _fmt_steps(steps: list[dict]) -> list[str]:
+        """Render steps as one bullet each: ``- HH:MM · pet · task``."""
+        if not steps:
+            return ["- _(none)_"]
+        return [
+            f"- {s.get('time', '?')} · {s.get('pet', '?')} · {s.get('task', '?')}"
+            for s in steps
+        ]
 
     def to_markdown(self) -> str:
         """Render the reasoning trace as Markdown for ai_interactions.md."""
@@ -120,10 +132,16 @@ class CritiqueResult:
             f"- **Revised:** {'yes' if self.revised else 'no'}",
             f"- **Issues before → after:** "
             f"{len(self.problems_before)} → {len(self.problems_after)}",
-            "",
-            "| Step | Detail |",
-            "| --- | --- |",
         ]
+        # Show the plan before vs. after the critique so a reader can SEE the fix
+        # (e.g. two pets merged into one step, then split back out correctly).
+        if self.revised and self.initial_steps:
+            lines += ["", "**First draft (before critique):**", *self._fmt_steps(self.initial_steps)]
+            lines += ["", "**After self-critique:**", *self._fmt_steps(self.plan.steps)]
+        elif self.plan.steps:
+            lines += ["", "**Plan:**", *self._fmt_steps(self.plan.steps)]
+
+        lines += ["", "| Step | Detail |", "| --- | --- |"]
         for entry in self.trace:
             step = entry.get("step", "")
             detail = entry.get("detail") or entry.get("assessment") or ""
@@ -174,6 +192,12 @@ def self_critique(llm, plan: AIPlan, chunks: list, scheduler_plan: list[dict],
     """
     if plan.refused:
         return CritiqueResult.refused(plan)
+
+    # Capture the draft's step assignments so the trace can show before -> after.
+    initial_steps = [
+        {"time": s.get("time"), "pet": s.get("pet"), "task": s.get("task")}
+        for s in plan.steps
+    ]
 
     before = verify_output(plan, chunks, scheduler_plan)
     trace: list[dict] = [
@@ -247,5 +271,6 @@ def self_critique(llm, plan: AIPlan, chunks: list, scheduler_plan: list[dict],
         revised=(current is not plan),
         model_self_confidence=model_conf,
         sources=[c.citation() for c in chunks],
+        initial_steps=initial_steps,
         trace=trace,
     )

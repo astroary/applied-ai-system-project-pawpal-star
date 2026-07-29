@@ -161,6 +161,19 @@ def test_trace_is_recorded_and_serializable(retriever):
     assert "Self-critique trace" in result.to_markdown()
 
 
+def test_markdown_shows_before_and_after_steps(retriever):
+    """The trace visibly shows the drifted draft step and the corrected step."""
+    owner = make_owner()
+    plan, chunks, scheduler_plan = _drifted_plan(retriever, owner)
+    result = self_critique(ScriptedLLM([CRITIQUE_FIX]), plan, chunks, scheduler_plan)
+    md = result.to_markdown()
+    assert "First draft (before critique):" in md
+    assert "After self-critique:" in md
+    # draft assigned the play session to Biscuit; the fix reassigns it to Mochi
+    assert "Biscuit · Play session" in md
+    assert "Mochi · Play session" in md
+
+
 # --- End-to-end integration through the planner ---------------------------
 def test_plan_and_review_runs_full_loop(retriever):
     """plan_and_review: draft (drift) -> critique (fix) -> scored result."""
